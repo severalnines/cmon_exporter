@@ -1,4 +1,4 @@
-module github.com/severalnines/cmon-exporter
+module github.com/severalnines/cmon_exporter
 
 go 1.18
 
