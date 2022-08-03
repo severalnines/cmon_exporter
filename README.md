@@ -1,7 +1,7 @@
 # cmon-exporter
 Exporter for CMON part of the ClusterControl project http://www.severalnines.com/.
 
-## build
+## Build
 make
 
 ## How to run
