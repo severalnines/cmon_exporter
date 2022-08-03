@@ -8,5 +8,5 @@ CMON_USERNAME=johan CMON_PASSWORD=secret CMON_ENDPOINT=https://127.0.0.1:9501 ./
 ## Docker:
 sudo docker run --net=host -it  -e CMON_USERNAME=johan -e CMON_PASSWORD=secret -e CMON_ENDPOINT=https://127.0.0.1:9501  severalnines/cmon_exporter
 
-## Test:
+## Check you get metrics:
 curl 127.0.0.1:9954/metrics |grep cmon_up
