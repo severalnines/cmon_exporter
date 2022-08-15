@@ -19,7 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/severalnines/cmon-proxy/cmon"
 	//	"github.com/severalnines/cmon-proxy/cmon/api"
-	"encoding/json"
+	//"encoding/json"
 	"github.com/severalnines/cmon-proxy/config"
 	"log"
 	"net/http"
@@ -127,10 +127,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(
 			up, prometheus.GaugeValue, 0)
 		log.Println(err)
-	} else {
-		x, _ := json.Marshal(res)
-		log.Println(string(x))
 	}
+	//else {
+	//	_, _ := json.Marshal(res)
+	//	}
 	ch <- prometheus.MustNewConstMetric(
 		up, prometheus.GaugeValue, 1)
 	totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
