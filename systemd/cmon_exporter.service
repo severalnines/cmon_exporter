@@ -1,0 +1,22 @@
+[Unit]
+Description=CMON Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/run
+Environment="CMON_USERNAME=johan"
+Environment="CMON_PASSWORD=johan"
+ExecStart=/usr/local/bin/cmon_exporter
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=cmon_exporter
+PIDFile=/var/run/cmon_exporter.pid
+
+[Install]
+WantedBy=multi-user.target
+
