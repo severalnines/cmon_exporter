@@ -88,6 +88,10 @@ type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
 }
 
+func Dummy() error {
+	return nil
+}
+
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
 	return &Exporter{
 		cmonEndpoint: cmonEndpoint,
