@@ -235,6 +235,8 @@ github.com/severalnines/cmon-proxy v0.0.0-20220713074912-767ba3ea7aaf h1:zYCIBgm
 github.com/severalnines/cmon-proxy v0.0.0-20220713074912-767ba3ea7aaf/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
 github.com/severalnines/cmon-proxy v0.1.0 h1:BMLSNcbjZpWgSWc81DWVwctAos6nt7giHQr+epR7PVI=
 github.com/severalnines/cmon-proxy v0.1.0/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
+github.com/severalnines/cmon-proxy v0.2.0 h1:cRXOvU1hmkjYN4rXyarEXp1oXqcwGh2bZJHp4dDQXXo=
+github.com/severalnines/cmon-proxy v0.2.0/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
