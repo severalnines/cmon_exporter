@@ -1,7 +1,8 @@
-
-on:
-  release:
-    types: [created]
+name: release
+on: [workflow_dispatch]
+#on:
+#  release:
+#    types: [created]
 
 jobs:
   release-linux-amd64:
