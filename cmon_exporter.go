@@ -42,6 +42,18 @@ var (
 		labels, nil,
 	)
 
+	clusterFailed = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_failure"),
+		"Is the cluster up (FAILURE) or not.",
+		labels, nil,
+	)
+
+	clusterDegraded = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_degraded"),
+		"Is the cluster up (FAILURE) or not.",
+		labels, nil,
+	)
+
 	totalClustersCount = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_total"),
 		"Total number of clusters.",
@@ -102,6 +114,8 @@ func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) 
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- up
 	ch <- clusterUp
+	ch <- clusterFailed
+	ch <- clusterDegraded
 	ch <- totalClustersCount
 	ch <- clusterFailedTotal
 	ch <- clusterStartedTotal
@@ -148,9 +162,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				clusterUp, prometheus.CounterValue, 0, cluster.ClusterName)
 		}
 		if cluster.State == "FAILURE" {
+			ch <- prometheus.MustNewConstMetric(
+				clusterFailed, prometheus.CounterValue, 1, cluster.ClusterName)
 			totalFailed++
 		}
 		if cluster.State == "DEGRADED" {
+			ch <- prometheus.MustNewConstMetric(
+				clusterDegraded, prometheus.CounterValue, 1, cluster.ClusterName)
 			totalDegraded++
 		}
 		if cluster.State == "UNKNOWN" {

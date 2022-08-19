@@ -231,10 +231,6 @@ github.com/prometheus/procfs v0.7.3/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/quasoft/memstore v0.0.0-20180925164028-84a050167438/go.mod h1:wTPjTepVu7uJBYgZ0SdWHQlIas582j6cn2jgk4DDdlg=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rs/xid v1.3.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=
-github.com/severalnines/cmon-proxy v0.0.0-20220713074912-767ba3ea7aaf h1:zYCIBgm9hTdK/4oGsQ1c4v2+PplC8PtEqCut0JMY13o=
-github.com/severalnines/cmon-proxy v0.0.0-20220713074912-767ba3ea7aaf/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
-github.com/severalnines/cmon-proxy v0.1.0 h1:BMLSNcbjZpWgSWc81DWVwctAos6nt7giHQr+epR7PVI=
-github.com/severalnines/cmon-proxy v0.1.0/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
 github.com/severalnines/cmon-proxy v0.2.0 h1:cRXOvU1hmkjYN4rXyarEXp1oXqcwGh2bZJHp4dDQXXo=
 github.com/severalnines/cmon-proxy v0.2.0/go.mod h1:fm0DnRMhp+N68qri4CAJcvFadryVgm9E7FLfrBd5tFY=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
