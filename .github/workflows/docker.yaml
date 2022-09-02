@@ -1,0 +1,36 @@
+name: Docker
+
+on: [workflow_dispatch]
+
+env:
+  DOCKER_REPO: severalnines
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ env.DOCKER_REPO }}
+        password: ${{ secrets.DH_PASS }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Build
+      run: make build
+
+    - name: Create container
+      run: make docker
+
+    - name: Tag container
+      run: make docker-tag-latest
+
+    - name: Publish container
+      run: make docker-publish
