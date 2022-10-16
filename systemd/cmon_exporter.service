@@ -9,6 +9,7 @@ Group=root
 WorkingDirectory=/var/run
 Environment="CMON_USERNAME=USER"
 Environment="CMON_PASSWORD=SECRET"
+Environment="CMON_ENDPOINT=https://127.0.0.1:9501"
 ExecStart=/usr/local/bin/cmon_exporter
 Restart=on-failure
 RestartSec=10
