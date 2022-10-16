@@ -13,6 +13,9 @@ CMON_USERNAME=johan CMON_PASSWORD=secret CMON_ENDPOINT=https://127.0.0.1:9501 ./
 
 ## Systemd
 
+- Build or download a released version: https://github.com/severalnines/cmon_exporter/releases
+- copy the cmon_exporter binary to /usr/local/bin
+
 Download
 https://github.com/severalnines/cmon_exporter/edit/main/systemd/cmon_exporter.service
 
