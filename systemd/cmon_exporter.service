@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=nobody
+Group=nogroup
 WorkingDirectory=/var/run
 Environment="CMON_USERNAME=USER"
 Environment="CMON_PASSWORD=SECRET"
