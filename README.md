@@ -21,10 +21,11 @@ Copy the file to :
 
 Change USER and SECRET to a ClusterControl (cmon user) that has access to all database clusters.
 
-Enable systemd:
+Enable and start:
 ```
 systemctl enable  /etc/systemd/system/cmon_exporter.service
 systemctl restart cmon_exporter
+systemctl status cmon_exporter
 ```
 
 ## Docker:
