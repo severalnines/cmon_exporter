@@ -7,8 +7,8 @@ Type=simple
 User=root
 Group=root
 WorkingDirectory=/var/run
-Environment="CMON_USERNAME=johan"
-Environment="CMON_PASSWORD=johan"
+Environment="CMON_USERNAME=USER"
+Environment="CMON_PASSWORD=SECRET"
 ExecStart=/usr/local/bin/cmon_exporter
 Restart=on-failure
 RestartSec=10
