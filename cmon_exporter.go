@@ -109,6 +109,12 @@ var (
 		labels, nil,
 	)
 
+	clusterBackupUploadFailed = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_backup_upload_failed"),
+		"Is there an active backup failed alarm on the cluster.",
+		labels, nil,
+	)
+
 	listenAddress = flag.String("web.listen-address", ":9954",
 		"Address to listen on for telemetry")
 	metricsPath = flag.String("web.telemetry-path", "/metrics",
@@ -144,6 +150,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- criticalAlarmsTotal
 	ch <- backupFailedTotal
 	ch <- clusterBackupFailed
+	ch <- clusterBackupUploadFailed
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
@@ -217,7 +224,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		if err != nil {
 			log.Println(err)
 		}
-		failedBackupAlarms := 0.0
+		failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
 		for _, alarm := range res3.Alarms {
 			if alarm.SeverityName == "ALARM_CRITICAL" {
 				totalCriticalAlarms++
@@ -226,9 +233,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				totalBackupFailedAlarms++
 				failedBackupAlarms++
 			}
+			if alarm.TypeName == "BackupUploadToCloudFailed" {
+				failedUploadBackupAlarms++
+			}
 		}
 		ch <- prometheus.MustNewConstMetric(
 			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr)
+		ch <- prometheus.MustNewConstMetric(
+			clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr)
 
 	}
 
