@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/prometheus/client_golang v1.12.2
-	github.com/severalnines/cmon-proxy v0.2.0
+	github.com/severalnines/cmon-proxy v0.2.1-0.20220820062650-b8061af49272
 )
 
 require (

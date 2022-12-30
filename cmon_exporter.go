@@ -18,18 +18,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/severalnines/cmon-proxy/cmon"
-	//	"github.com/severalnines/cmon-proxy/cmon/api"
+	"github.com/severalnines/cmon-proxy/cmon/api"
 	//"encoding/json"
 	"github.com/severalnines/cmon-proxy/config"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 const namespace = "cmon"
 
 var (
-	labels = []string{"name"}
+	labels = []string{"name", "cid"}
 	up     = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
@@ -50,7 +51,7 @@ var (
 
 	clusterDegraded = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_degraded"),
-		"Is the cluster up (FAILURE) or not.",
+		"Is the cluster up (DEGRADED) or not.",
 		labels, nil,
 	)
 
@@ -90,6 +91,24 @@ var (
 		nil,
 	)
 
+	criticalAlarmsTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "alarms_critical_total"),
+		"Total number of clusters in unknown state.",
+		nil,
+		nil,
+	)
+	backupFailedTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "alarms_backup_failed_total"),
+		"Total number of failed backups alarms.",
+		nil,
+		nil,
+	)
+	clusterBackupFailed = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_backup_failed"),
+		"Is there an active backup failed alarm on the cluster.",
+		labels, nil,
+	)
+
 	listenAddress = flag.String("web.listen-address", ":9954",
 		"Address to listen on for telemetry")
 	metricsPath = flag.String("web.telemetry-path", "/metrics",
@@ -122,6 +141,9 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- clusterDegradedTotal
 	ch <- clusterStoppedTotal
 	ch <- clusterUnknownTotal
+	ch <- criticalAlarmsTotal
+	ch <- backupFailedTotal
+	ch <- clusterBackupFailed
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
@@ -140,7 +162,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			up, prometheus.GaugeValue, 0)
 		return
 	}
-	res, err := client.GetAllClusterInfo(nil)
+	res, err := client.GetAllClusterInfo(&api.GetAllClusterInfoRequest{
+		WithOperation:    &api.WithOperation{Operation: "getAllClusterInfo"},
+		WithSheetInfo:    false,
+		WithDatabases:    false,
+		WithLicenseCheck: false,
+		WithHosts:        false,
+	})
 	if err != nil {
 		ch <- prometheus.MustNewConstMetric(
 			up, prometheus.GaugeValue, 0)
@@ -151,24 +179,30 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	//	}
 	ch <- prometheus.MustNewConstMetric(
 		up, prometheus.GaugeValue, 1)
-	totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
+		//		log.Println(cluster.Hosts[0])
+		clusterIdStr := strconv.FormatUint(cluster.ClusterID, 10)
 		if cluster.State == "STARTED" {
 			totalStarted++
 			ch <- prometheus.MustNewConstMetric(
-				clusterUp, prometheus.CounterValue, 1, cluster.ClusterName)
+				clusterUp, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
+			ch <- prometheus.MustNewConstMetric(
+				clusterFailed, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
+			ch <- prometheus.MustNewConstMetric(
+				clusterDegraded, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
 		} else {
 			ch <- prometheus.MustNewConstMetric(
-				clusterUp, prometheus.CounterValue, 0, cluster.ClusterName)
+				clusterUp, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
 		}
 		if cluster.State == "FAILURE" {
 			ch <- prometheus.MustNewConstMetric(
-				clusterFailed, prometheus.CounterValue, 1, cluster.ClusterName)
+				clusterFailed, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
 			totalFailed++
 		}
 		if cluster.State == "DEGRADED" {
 			ch <- prometheus.MustNewConstMetric(
-				clusterDegraded, prometheus.CounterValue, 1, cluster.ClusterName)
+				clusterDegraded, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
 			totalDegraded++
 		}
 		if cluster.State == "UNKNOWN" {
@@ -177,7 +211,25 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		if cluster.State == "STOPPED" {
 			totalStopped++
 		}
+
 		totalCount++
+		res3, err := client.GetAlarms(cluster.ClusterID)
+		if err != nil {
+			log.Println(err)
+		}
+		failedBackupAlarms := 0.0
+		for _, alarm := range res3.Alarms {
+			if alarm.SeverityName == "ALARM_CRITICAL" {
+				totalCriticalAlarms++
+			}
+			if alarm.TypeName == "BackupFailed" {
+				totalBackupFailedAlarms++
+				failedBackupAlarms++
+			}
+		}
+		ch <- prometheus.MustNewConstMetric(
+			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr)
+
 	}
 
 	ch <- prometheus.MustNewConstMetric(
@@ -190,22 +242,31 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		clusterStoppedTotal, prometheus.CounterValue, totalStopped)
 	ch <- prometheus.MustNewConstMetric(
 		clusterUnknownTotal, prometheus.CounterValue, totalUnknown)
-
 	ch <- prometheus.MustNewConstMetric(
 		totalClustersCount, prometheus.CounterValue, totalCount)
+	ch <- prometheus.MustNewConstMetric(
+		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms)
+	ch <- prometheus.MustNewConstMetric(
+		backupFailedTotal, prometheus.CounterValue, totalBackupFailedAlarms)
 
-}
-
-/*func parseStatusField(value string) int64 {
-	switch value {
-	case "UP", "UP 1/3", "UP 2/3", "OPEN", "no check", "DRAIN":
-		return 1
-	case "DOWN", "DOWN 1/2", "NOLB", "MAINT", "MAINT(via)", "MAINT(resolution)":
-		return 0
-	default:
-		return 0
+	if err != nil {
+		ch <- prometheus.MustNewConstMetric(
+			up, prometheus.GaugeValue, 0)
+		log.Println(err)
 	}
 }
+
+/*
+	func parseStatusField(value string) int64 {
+		switch value {
+		case "UP", "UP 1/3", "UP 2/3", "OPEN", "no check", "DRAIN":
+			return 1
+		case "DOWN", "DOWN 1/2", "NOLB", "MAINT", "MAINT(via)", "MAINT(resolution)":
+			return 0
+		default:
+			return 0
+		}
+	}
 */
 func main() {
 
