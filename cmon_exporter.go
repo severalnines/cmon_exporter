@@ -30,8 +30,9 @@ import (
 const namespace = "cmon"
 
 var (
-	labels = []string{"name", "cid"}
-	up     = prometheus.NewDesc(
+	labels  = []string{"name", "cid", "ctrlid"}
+	labels2 = []string{"ctrlid"}
+	up      = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
 		nil, nil,
@@ -58,49 +59,49 @@ var (
 	totalClustersCount = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_total"),
 		"Total number of clusters.",
-		nil, nil,
+		labels2, nil,
 	)
 
 	clusterFailedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_failed_total"),
 		"Total number of clusters in failed state.",
-		nil, nil,
+		labels2, nil,
 	)
 
 	clusterStartedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_started_total"),
 		"Total number of clusters in started state.",
-		nil, nil,
+		labels2, nil,
 	)
 	clusterDegradedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_degraded_total"),
 		"Total number of clusters in degraded state.",
-		nil, nil,
+		labels2, nil,
 	)
 
 	clusterStoppedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_stopped_total"),
 		"Total number of clusters in stopped state.",
-		nil, nil,
+		labels2, nil,
 	)
 	//x                   = []string{"cluster"}
 	clusterUnknownTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_unknown_total"),
 		"Total number of clusters in unknown state.",
-		nil,
+		labels2,
 		nil,
 	)
 
 	criticalAlarmsTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "alarms_critical_total"),
 		"Total number of clusters in unknown state.",
-		nil,
+		labels2,
 		nil,
 	)
 	backupFailedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "alarms_backup_failed_total"),
 		"Total number of failed backups alarms.",
-		nil,
+		labels2,
 		nil,
 	)
 	clusterBackupFailed = prometheus.NewDesc(
@@ -169,6 +170,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			up, prometheus.GaugeValue, 0)
 		return
 	}
+	controllerId := client.ControllerID()
 	res, err := client.GetAllClusterInfo(&api.GetAllClusterInfoRequest{
 		WithOperation:    &api.WithOperation{Operation: "getAllClusterInfo"},
 		WithSheetInfo:    false,
@@ -193,23 +195,23 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		if cluster.State == "STARTED" {
 			totalStarted++
 			ch <- prometheus.MustNewConstMetric(
-				clusterUp, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
+				clusterUp, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr, controllerId)
 			ch <- prometheus.MustNewConstMetric(
-				clusterFailed, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
+				clusterFailed, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr, controllerId)
 			ch <- prometheus.MustNewConstMetric(
-				clusterDegraded, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
+				clusterDegraded, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr, controllerId)
 		} else {
 			ch <- prometheus.MustNewConstMetric(
-				clusterUp, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr)
+				clusterUp, prometheus.CounterValue, 0, cluster.ClusterName, clusterIdStr, controllerId)
 		}
 		if cluster.State == "FAILURE" {
 			ch <- prometheus.MustNewConstMetric(
-				clusterFailed, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
+				clusterFailed, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr, controllerId)
 			totalFailed++
 		}
 		if cluster.State == "DEGRADED" {
 			ch <- prometheus.MustNewConstMetric(
-				clusterDegraded, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr)
+				clusterDegraded, prometheus.CounterValue, 1, cluster.ClusterName, clusterIdStr, controllerId)
 			totalDegraded++
 		}
 		if cluster.State == "UNKNOWN" {
@@ -238,28 +240,28 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 		ch <- prometheus.MustNewConstMetric(
-			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr)
+			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
 		ch <- prometheus.MustNewConstMetric(
-			clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr)
+			clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
 
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		clusterFailedTotal, prometheus.CounterValue, totalFailed)
+		clusterFailedTotal, prometheus.CounterValue, totalFailed, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		clusterStartedTotal, prometheus.CounterValue, totalStarted)
+		clusterStartedTotal, prometheus.CounterValue, totalStarted, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		clusterDegradedTotal, prometheus.CounterValue, totalDegraded)
+		clusterDegradedTotal, prometheus.CounterValue, totalDegraded, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		clusterStoppedTotal, prometheus.CounterValue, totalStopped)
+		clusterStoppedTotal, prometheus.CounterValue, totalStopped, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		clusterUnknownTotal, prometheus.CounterValue, totalUnknown)
+		clusterUnknownTotal, prometheus.CounterValue, totalUnknown, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		totalClustersCount, prometheus.CounterValue, totalCount)
+		totalClustersCount, prometheus.CounterValue, totalCount, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms)
+		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms, controllerId)
 	ch <- prometheus.MustNewConstMetric(
-		backupFailedTotal, prometheus.CounterValue, totalBackupFailedAlarms)
+		backupFailedTotal, prometheus.CounterValue, totalBackupFailedAlarms, controllerId)
 
 	if err != nil {
 		ch <- prometheus.MustNewConstMetric(
