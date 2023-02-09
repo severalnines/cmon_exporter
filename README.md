@@ -6,9 +6,15 @@ Exporter for CMON part of the ClusterControl project http://www.severalnines.com
 make
 ```
 
+## Create a CMON user for the cmon_exporter
+```
+s9s user --create --group=admins --generate-key --controller=https://127.0.0.1:9501 --new-password="SECRET" --email-address="admin@example.com" cmon_exporter
+```
+
+
 ## How to run
 ```
-CMON_USERNAME=johan CMON_PASSWORD=secret CMON_ENDPOINT=https://127.0.0.1:9501 ./cmon_exporter
+CMON_USERNAME=cmon_exporter CMON_PASSWORD=SECRET CMON_ENDPOINT=https://127.0.0.1:9501 ./cmon_exporter
 ```
 
 ## Systemd
@@ -33,7 +39,7 @@ systemctl status cmon_exporter
 
 ## Docker:
 ```
-sudo docker run --net=host -it  -e CMON_USERNAME=johan -e CMON_PASSWORD=secret -e CMON_ENDPOINT=https://127.0.0.1:9501  severalnines/cmon_exporter
+sudo docker run --net=host -it  -e CMON_USERNAME=cmon_exporter -e CMON_PASSWORD=SECRET -e CMON_ENDPOINT=https://127.0.0.1:9501  severalnines/cmon_exporter
 ```
 ## Check you get metrics:
 ```
