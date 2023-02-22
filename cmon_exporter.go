@@ -30,12 +30,13 @@ import (
 const namespace = "cmon"
 
 var (
-	labels  = []string{"name", "cid", "ctrlid"}
-	labels2 = []string{"ctrlid"}
-	up      = prometheus.NewDesc(
+	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
+	labels2    = []string{"ControllerId"}
+	labelsCmon = []string{"CmonVersion"}
+	up         = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
-		nil, nil,
+		labelsCmon, nil,
 	)
 
 	clusterUp = prometheus.NewDesc(
@@ -167,10 +168,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		res, err := client.Ping()
 		log.Println("Test: ", err, res)
 		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0)
+			up, prometheus.GaugeValue, 0, "")
 		return
 	}
 	controllerId := client.ControllerID()
+	serverVersion := client.ServerVersion()
+
 	res, err := client.GetAllClusterInfo(&api.GetAllClusterInfoRequest{
 		WithOperation:    &api.WithOperation{Operation: "getAllClusterInfo"},
 		WithSheetInfo:    false,
@@ -182,12 +185,13 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(
 			up, prometheus.GaugeValue, 0)
 		log.Println(err)
+		return
 	}
 	//else {
 	//	_, _ := json.Marshal(res)
 	//	}
 	ch <- prometheus.MustNewConstMetric(
-		up, prometheus.GaugeValue, 1)
+		up, prometheus.GaugeValue, 1, serverVersion)
 	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
 		//		log.Println(cluster.Hosts[0])
