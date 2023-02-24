@@ -48,22 +48,23 @@ curl 127.0.0.1:9954/metrics |grep cmon_up
 
 ## Current metrics
 ```
-cmon_alarms_backup_failed_total 0
-cmon_alarms_critical_total 2
-cmon_cluster_backup_failed{cid="749",name="cluster_749"} 0
-cmon_cluster_backup_failed{cid="750",name="MSSQL-1N"} 0
-cmon_cluster_backup_upload_failed{cid="749",name="cluster_749"} 0
-cmon_cluster_backup_upload_failed{cid="750",name="MSSQL-1N"} 0
-cmon_cluster_degraded{cid="749",name="cluster_749"} 1
-cmon_cluster_degraded{cid="750",name="MSSQL-1N"} 0
-cmon_cluster_degraded_total 1
-cmon_cluster_failed_total 0
-cmon_cluster_failure{cid="750",name="MSSQL-1N"} 0
-cmon_cluster_started_total 1
-cmon_cluster_stopped_total 0
-cmon_cluster_total 2
-cmon_cluster_unknown_total 0
-cmon_cluster_up{cid="749",name="cluster_749"} 0
-cmon_cluster_up{cid="750",name="MSSQL-1N"} 1
-cmon_up 1
+cmon_alarms_backup_failed_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_alarms_critical_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_backup_failed{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_backup_failed{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_backup_upload_failed{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_backup_upload_failed{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_degraded{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_degraded{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_degraded_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_failed_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_failure{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_failure{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_started_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 2
+cmon_cluster_stopped_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 2
+cmon_cluster_unknown_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
+cmon_cluster_up{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 1
+cmon_cluster_up{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 1
+cmon_up{CmonVersion="1.9.7"} 1
 ```
