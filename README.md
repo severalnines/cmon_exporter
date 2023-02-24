@@ -66,5 +66,5 @@ cmon_cluster_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 2
 cmon_cluster_unknown_total{ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 0
 cmon_cluster_up{ClusterID="807",ClusterName="PXC57",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 1
 cmon_cluster_up{ClusterID="808",ClusterName="PXC80",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 1
-cmon_up{CmonVersion="1.9.7"} 1
+cmon_up{CmonVersion="1.9.7",ControllerId="8c11355d-04c6-4c7c-a623-7d166af7657a"} 1
 ```
