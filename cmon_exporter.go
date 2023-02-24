@@ -32,7 +32,7 @@ const namespace = "cmon"
 var (
 	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
 	labels2    = []string{"ControllerId"}
-	labelsCmon = []string{"CmonVersion"}
+	labelsCmon = []string{"CmonVersion", "ControllerId"}
 	up         = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
@@ -191,7 +191,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	//	_, _ := json.Marshal(res)
 	//	}
 	ch <- prometheus.MustNewConstMetric(
-		up, prometheus.GaugeValue, 1, serverVersion)
+		up, prometheus.GaugeValue, 1, serverVersion, controllerId)
 	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
 		//		log.Println(cluster.Hosts[0])
