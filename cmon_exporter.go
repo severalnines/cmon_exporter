@@ -229,7 +229,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		totalCount++
 		res3, err := client.GetAlarms(cluster.ClusterID)
 		if err != nil {
-			log.Println("getting alarms for", cluster.ClusterType, err)
+			log.Println("getting alarms for", cluster.ClusterID, err)
 		} else {
 			failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
 			for _, alarm := range res3.Alarms {
