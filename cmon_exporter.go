@@ -15,16 +15,17 @@ package main
 
 import (
 	"flag"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/severalnines/cmon-proxy/cmon"
 	"github.com/severalnines/cmon-proxy/cmon/api"
 	//"encoding/json"
 	"github.com/severalnines/cmon-proxy/config"
-	"log"
-	"net/http"
-	"os"
-	"strconv"
 )
 
 const namespace = "cmon"
@@ -228,25 +229,26 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		totalCount++
 		res3, err := client.GetAlarms(cluster.ClusterID)
 		if err != nil {
-			log.Println(err)
+			log.Println("getting alarms for", cluster.ClusterType, err)
+		} else {
+			failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
+			for _, alarm := range res3.Alarms {
+				if alarm.SeverityName == "ALARM_CRITICAL" {
+					totalCriticalAlarms++
+				}
+				if alarm.TypeName == "BackupFailed" {
+					totalBackupFailedAlarms++
+					failedBackupAlarms++
+				}
+				if alarm.TypeName == "BackupUploadToCloudFailed" {
+					failedUploadBackupAlarms++
+				}
+			}
+			ch <- prometheus.MustNewConstMetric(
+				clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+			ch <- prometheus.MustNewConstMetric(
+				clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
 		}
-		failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
-		for _, alarm := range res3.Alarms {
-			if alarm.SeverityName == "ALARM_CRITICAL" {
-				totalCriticalAlarms++
-			}
-			if alarm.TypeName == "BackupFailed" {
-				totalBackupFailedAlarms++
-				failedBackupAlarms++
-			}
-			if alarm.TypeName == "BackupUploadToCloudFailed" {
-				failedUploadBackupAlarms++
-			}
-		}
-		ch <- prometheus.MustNewConstMetric(
-			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
-		ch <- prometheus.MustNewConstMetric(
-			clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
 
 	}
 
