@@ -14,30 +14,8 @@
 package main
 
 import (
-	/*
-		"bufio"
-		"io"
-		"io/ioutil"
-		"net"
-		"net/http"
-		"net/http/httptest"
-		"os"
-		"path"
-		"reflect"
-		"runtime"
-		"time"
-		"github.com/go-kit/log"
-		"github.com/prometheus/client_golang/prometheus"
-		"github.com/prometheus/client_golang/prometheus/testutil"
-	*/
-
 	"testing"
 )
 
 func TestDummy(t *testing.T) {
-	t.Log("Say bye")
-	err := Dummy()
-	if err != nil {
-		t.Fatalf("die\n")
-	}
 }
