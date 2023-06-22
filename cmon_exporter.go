@@ -274,18 +274,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-/*
-	func parseStatusField(value string) int64 {
-		switch value {
-		case "UP", "UP 1/3", "UP 2/3", "OPEN", "no check", "DRAIN":
-			return 1
-		case "DOWN", "DOWN 1/2", "NOLB", "MAINT", "MAINT(via)", "MAINT(resolution)":
-			return 0
-		default:
-			return 0
-		}
-	}
-*/
 func main() {
 
 	cmonEndpoint := os.Getenv("CMON_ENDPOINT")
