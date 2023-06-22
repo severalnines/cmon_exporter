@@ -15,16 +15,16 @@ package main
 
 import (
 	"flag"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/severalnines/cmon-proxy/cmon"
-	"github.com/severalnines/cmon-proxy/cmon/api"
-	//"encoding/json"
-	"github.com/severalnines/cmon-proxy/config"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/severalnines/cmon-proxy/cmon"
+	"github.com/severalnines/cmon-proxy/cmon/api"
+	"github.com/severalnines/cmon-proxy/config"
 )
 
 const namespace = "cmon"
@@ -33,7 +33,8 @@ var (
 	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
 	labels2    = []string{"ControllerId"}
 	labelsCmon = []string{"CmonVersion", "ControllerId"}
-	up         = prometheus.NewDesc(
+
+	up = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
 		labelsCmon, nil,
@@ -85,19 +86,17 @@ var (
 		"Total number of clusters in stopped state.",
 		labels2, nil,
 	)
-	//x                   = []string{"cluster"}
+
 	clusterUnknownTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_unknown_total"),
 		"Total number of clusters in unknown state.",
-		labels2,
-		nil,
+		labels2, nil,
 	)
 
 	criticalAlarmsTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "alarms_critical_total"),
 		"Total number of clusters in unknown state.",
-		labels2,
-		nil,
+		labels2, nil,
 	)
 	backupFailedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "alarms_backup_failed_total"),
@@ -127,10 +126,6 @@ type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
 }
 
-func Dummy() error {
-	return nil
-}
-
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
 	return &Exporter{
 		cmonEndpoint: cmonEndpoint,
@@ -138,6 +133,7 @@ func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) 
 		cmonPassword: cmonPassword,
 	}
 }
+
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- up
 	ch <- clusterUp
@@ -166,11 +162,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	err := client.Authenticate()
 	if err != nil {
 		res, err := client.Ping()
-		log.Println("Test: ", err, res)
+		log.Println("Error on cmon auth, also ping result:", err, res)
 		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0, "")
+			up, prometheus.GaugeValue, 0, "", "")
 		return
 	}
+
 	controllerId := client.ControllerID()
 	serverVersion := client.ServerVersion()
 
@@ -182,16 +179,15 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		WithHosts:        false,
 	})
 	if err != nil {
+		log.Println("Error getting clusters info:", err)
 		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0)
-		log.Println(err)
+			up, prometheus.GaugeValue, 0, serverVersion, controllerId)
 		return
 	}
-	//else {
-	//	_, _ := json.Marshal(res)
-	//	}
+
 	ch <- prometheus.MustNewConstMetric(
 		up, prometheus.GaugeValue, 1, serverVersion, controllerId)
+
 	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
 		//		log.Println(cluster.Hosts[0])
@@ -228,26 +224,28 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		totalCount++
 		res3, err := client.GetAlarms(cluster.ClusterID)
 		if err != nil {
-			log.Println(err)
-		}
-		failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
-		for _, alarm := range res3.Alarms {
-			if alarm.SeverityName == "ALARM_CRITICAL" {
-				totalCriticalAlarms++
-			}
-			if alarm.TypeName == "BackupFailed" {
-				totalBackupFailedAlarms++
-				failedBackupAlarms++
-			}
-			if alarm.TypeName == "BackupUploadToCloudFailed" {
-				failedUploadBackupAlarms++
-			}
-		}
-		ch <- prometheus.MustNewConstMetric(
-			clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
-		ch <- prometheus.MustNewConstMetric(
-			clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+			log.Println("getting alarms for", cluster.ClusterID, err)
+		} else {
+			failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
 
+			for _, alarm := range res3.Alarms {
+				if alarm.SeverityName == "ALARM_CRITICAL" {
+					totalCriticalAlarms++
+				}
+				if alarm.TypeName == "BackupFailed" {
+					totalBackupFailedAlarms++
+					failedBackupAlarms++
+				}
+				if alarm.TypeName == "BackupUploadToCloudFailed" {
+					failedUploadBackupAlarms++
+				}
+			}
+
+			ch <- prometheus.MustNewConstMetric(
+				clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+			ch <- prometheus.MustNewConstMetric(
+				clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+		}
 	}
 
 	ch <- prometheus.MustNewConstMetric(
@@ -266,12 +264,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms, controllerId)
 	ch <- prometheus.MustNewConstMetric(
 		backupFailedTotal, prometheus.CounterValue, totalBackupFailedAlarms, controllerId)
-
-	if err != nil {
-		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0)
-		log.Println(err)
-	}
 }
 
 func main() {
@@ -306,6 +298,6 @@ func main() {
              </body>
              </html>`))
 	})
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 
+	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 }
