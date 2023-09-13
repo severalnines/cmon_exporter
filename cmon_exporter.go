@@ -70,6 +70,12 @@ var (
 		labels2, nil,
 	)
 
+	clusterFailedInitTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_failed_init_total"),
+		"Total number of clusters that failed to initialize..",
+		labels2, nil,
+	)
+
 	clusterStartedTotal = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_started_total"),
 		"Total number of clusters in started state.",
@@ -110,6 +116,12 @@ var (
 		labels, nil,
 	)
 
+	clusterFailedInit = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "cluster_failed_init"),
+		"Cluster failed to initialize.",
+		labels, nil,
+	)
+
 	clusterBackupUploadFailed = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "cluster_backup_upload_failed"),
 		"Is there an active backup failed alarm on the cluster.",
@@ -141,6 +153,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- clusterDegraded
 	ch <- totalClustersCount
 	ch <- clusterFailedTotal
+	ch <- clusterFailedInit
+	ch <- clusterFailedInitTotal
 	ch <- clusterStartedTotal
 	ch <- clusterDegradedTotal
 	ch <- clusterStoppedTotal
@@ -188,7 +202,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		up, prometheus.GaugeValue, 1, serverVersion, controllerId)
 
-	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms, totalClusterFailedInitAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
 		//		log.Println(cluster.Hosts[0])
 		clusterIdStr := strconv.FormatUint(cluster.ClusterID, 10)
@@ -226,15 +240,23 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		if err != nil {
 			log.Println("getting alarms for", cluster.ClusterID, err)
 		} else {
-			failedUploadBackupAlarms, failedBackupAlarms := 0.0, 0.0
+			failedUploadBackupAlarms, failedBackupAlarms, clusterFailedInitAlarms := 0.0, 0.0, 0.0
 
 			for _, alarm := range res3.Alarms {
+				if alarm.SeverityName == "ALARM_WARNING" {
+					continue
+				}
+				log.Println("getting alarms for", cluster.ClusterID, err)
 				if alarm.SeverityName == "ALARM_CRITICAL" {
 					totalCriticalAlarms++
 				}
 				if alarm.TypeName == "BackupFailed" {
 					totalBackupFailedAlarms++
 					failedBackupAlarms++
+				}
+				if alarm.TypeName == "ClusterFailedInit" {
+					totalClusterFailedInitAlarms++
+					clusterFailedInitAlarms++
 				}
 				if alarm.TypeName == "BackupUploadToCloudFailed" {
 					failedUploadBackupAlarms++
@@ -245,6 +267,25 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				clusterBackupFailed, prometheus.CounterValue, failedBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
 			ch <- prometheus.MustNewConstMetric(
 				clusterBackupUploadFailed, prometheus.CounterValue, failedUploadBackupAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+			ch <- prometheus.MustNewConstMetric(
+				clusterFailedInit, prometheus.CounterValue, clusterFailedInitAlarms, cluster.ClusterName, clusterIdStr, controllerId)
+		}
+	}
+
+	res3, err := client.GetAlarms(0)
+	if err != nil {
+		log.Println("getting alarms for", err)
+	} else {
+		for _, alarm := range res3.Alarms {
+			if alarm.SeverityName == "ALARM_WARNING" {
+				continue
+			}
+			if alarm.SeverityName == "ALARM_CRITICAL" {
+				totalCriticalAlarms++
+			}
+			if alarm.TypeName == "ClusterFailedInit" {
+				totalClusterFailedInitAlarms++
+			}
 		}
 	}
 
@@ -264,6 +305,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms, controllerId)
 	ch <- prometheus.MustNewConstMetric(
 		backupFailedTotal, prometheus.CounterValue, totalBackupFailedAlarms, controllerId)
+	ch <- prometheus.MustNewConstMetric(
+		clusterFailedInitTotal, prometheus.CounterValue, totalClusterFailedInitAlarms, controllerId)
 }
 
 func main() {
