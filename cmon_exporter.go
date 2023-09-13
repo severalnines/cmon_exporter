@@ -272,23 +272,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	res3, err := client.GetAlarms(0)
-	if err != nil {
-		log.Println("getting alarms for", err)
-	} else {
-		for _, alarm := range res3.Alarms {
-			if alarm.SeverityName == "ALARM_WARNING" {
-				continue
-			}
-			if alarm.SeverityName == "ALARM_CRITICAL" {
-				totalCriticalAlarms++
-			}
-			if alarm.TypeName == "ClusterFailedInit" {
-				totalClusterFailedInitAlarms++
-			}
-		}
-	}
-
 	ch <- prometheus.MustNewConstMetric(
 		clusterFailedTotal, prometheus.CounterValue, totalFailed, controllerId)
 	ch <- prometheus.MustNewConstMetric(
