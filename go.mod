@@ -1,6 +1,6 @@
 module github.com/severalnines/cmon_exporter
 
-go 1.18
+go 1.20
 
 require (
 	github.com/prometheus/client_golang v1.19.0
