@@ -246,7 +246,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 				if alarm.SeverityName == "ALARM_WARNING" {
 					continue
 				}
-				log.Println("getting alarms for", cluster.ClusterID, err)
 				if alarm.SeverityName == "ALARM_CRITICAL" {
 					totalCriticalAlarms++
 				}
