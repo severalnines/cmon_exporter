@@ -18,7 +18,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,11 +33,12 @@ import (
 const namespace = "cmon"
 
 var (
-	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
-	labels2    = []string{"ControllerId"}
-	labelsCmon = []string{"CmonVersion", "ControllerId"}
-
-	up = prometheus.NewDesc(
+	labels             = []string{"ClusterName", "ClusterID", "ControllerId"}
+	labels2            = []string{"ControllerId"}
+	labelsCmon         = []string{"CmonVersion", "ControllerId"}
+	processedCoredumps = map[string]bool{}
+	coredumpMutex      sync.Mutex
+	up                 = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
 		labelsCmon, nil,
@@ -132,10 +136,43 @@ var (
 		"Address to listen on for telemetry")
 	metricsPath = flag.String("web.telemetry-path", "/metrics",
 		"Path under which to expose metrics")
+	coredumpDetectedTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "coredump_detected_total",
+			Help:      "Total number of coredumps detected in /etc/cmon.d.",
+		},
+	)
 )
 
 type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
+}
+
+func ScanCoredumps(coredumpDir string) {
+	coredumpMutex.Lock()
+	defer coredumpMutex.Unlock()
+
+	newCoredumps := 0
+	err := filepath.Walk(coredumpDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && filepath.Base(path)[:5] == "core." && !processedCoredumps[path] {
+			processedCoredumps[path] = true
+			newCoredumps++
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error scanning coredump directory: %v\n", err)
+		return
+	}
+
+	if newCoredumps > 0 {
+		coredumpDetectedTotal.Add(float64(newCoredumps))
+	}
 }
 
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
@@ -310,7 +347,15 @@ func main() {
 	}
 
 	exporter := NewExporter(cmonEndpoint, cmonUsername, cmonPassword)
-	prometheus.MustRegister(exporter)
+	prometheus.MustRegister(exporter, coredumpDetectedTotal)
+	go func() {
+		coredumpDir := "/etc/cmon.d"
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ScanCoredumps(coredumpDir)
+		}
+	}()
 	log.Printf("Using connection endpoint: %s", cmonEndpoint)
 
 	http.Handle(*metricsPath, promhttp.Handler())
