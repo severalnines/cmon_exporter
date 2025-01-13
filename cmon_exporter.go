@@ -1,16 +1,3 @@
-// Copyright 2022 Severalnines
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package main
 
 import (
@@ -20,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -33,12 +18,10 @@ import (
 const namespace = "cmon"
 
 var (
-	labels             = []string{"ClusterName", "ClusterID", "ControllerId"}
-	labels2            = []string{"ControllerId"}
-	labelsCmon         = []string{"CmonVersion", "ControllerId"}
-	processedCoredumps = map[string]bool{}
-	coredumpMutex      sync.Mutex
-	up                 = prometheus.NewDesc(
+	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
+	labels2    = []string{"ControllerId"}
+	labelsCmon = []string{"CmonVersion", "ControllerId"}
+	up         = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
 		labelsCmon, nil,
@@ -136,12 +119,10 @@ var (
 		"Address to listen on for telemetry")
 	metricsPath = flag.String("web.telemetry-path", "/metrics",
 		"Path under which to expose metrics")
-	coredumpDetectedTotal = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Namespace: namespace,
-			Name:      "coredump_detected_total",
-			Help:      "Total number of coredumps detected in /etc/cmon.d.",
-		},
+	coredumpDetectedTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "coredump_detected_total"),
+		"Total number of coredumps detected",
+		nil, nil,
 	)
 )
 
@@ -149,30 +130,24 @@ type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
 }
 
-func ScanCoredumps(coredumpDir string) {
-	coredumpMutex.Lock()
-	defer coredumpMutex.Unlock()
+func ScanCoredumps(coredumpDir string) float64 {
+	totalCoredumps := 0
 
-	newCoredumps := 0
 	err := filepath.Walk(coredumpDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && filepath.Base(path)[:5] == "core." && !processedCoredumps[path] {
-			processedCoredumps[path] = true
-			newCoredumps++
+		if !info.IsDir() && filepath.Base(path)[:5] == "core." {
+			totalCoredumps++
 		}
 		return nil
 	})
 
 	if err != nil {
 		log.Printf("Error scanning coredump directory: %v\n", err)
-		return
 	}
 
-	if newCoredumps > 0 {
-		coredumpDetectedTotal.Add(float64(newCoredumps))
-	}
+	return float64(totalCoredumps)
 }
 
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
@@ -200,6 +175,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- backupFailedTotal
 	ch <- clusterBackupFailed
 	ch <- clusterBackupUploadFailed
+	ch <- coredumpDetectedTotal
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
@@ -218,6 +194,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			up, prometheus.GaugeValue, 0, "", "")
 		return
 	}
+	coredumpDir := "/etc/cmon.d"
+	totalCoredumps := ScanCoredumps(coredumpDir)
+	ch <- prometheus.MustNewConstMetric(
+		coredumpDetectedTotal, prometheus.GaugeValue, totalCoredumps)
 
 	controllerId := client.ControllerID()
 	serverVersion := client.ServerVersion()
@@ -347,15 +327,7 @@ func main() {
 	}
 
 	exporter := NewExporter(cmonEndpoint, cmonUsername, cmonPassword)
-	prometheus.MustRegister(exporter, coredumpDetectedTotal)
-	go func() {
-		coredumpDir := "/etc/cmon.d"
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			ScanCoredumps(coredumpDir)
-		}
-	}()
+	prometheus.MustRegister(exporter)
 	log.Printf("Using connection endpoint: %s", cmonEndpoint)
 
 	http.Handle(*metricsPath, promhttp.Handler())
