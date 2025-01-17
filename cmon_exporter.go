@@ -10,7 +10,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 package main
 
 import (
@@ -18,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,8 +33,7 @@ var (
 	labels     = []string{"ClusterName", "ClusterID", "ControllerId"}
 	labels2    = []string{"ControllerId"}
 	labelsCmon = []string{"CmonVersion", "ControllerId"}
-
-	up = prometheus.NewDesc(
+	up         = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "up"),
 		"Was the last  CMON query successful.",
 		labelsCmon, nil,
@@ -132,10 +131,35 @@ var (
 		"Address to listen on for telemetry")
 	metricsPath = flag.String("web.telemetry-path", "/metrics",
 		"Path under which to expose metrics")
+	coredumpDetectedTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "coredump_detected_total"),
+		"Total number of coredumps detected",
+		nil, nil,
+	)
 )
 
 type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
+}
+
+func ScanCoredumps(coredumpDir string) float64 {
+	totalCoredumps := 0
+
+	err := filepath.Walk(coredumpDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && filepath.Base(path)[:5] == "core." {
+			totalCoredumps++
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error scanning coredump directory: %v\n", err)
+	}
+
+	return float64(totalCoredumps)
 }
 
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
@@ -163,6 +187,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- backupFailedTotal
 	ch <- clusterBackupFailed
 	ch <- clusterBackupUploadFailed
+	ch <- coredumpDetectedTotal
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
@@ -181,6 +206,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			up, prometheus.GaugeValue, 0, "", "")
 		return
 	}
+	coredumpDir := "/etc/cmon.d"
+	totalCoredumps := ScanCoredumps(coredumpDir)
+	ch <- prometheus.MustNewConstMetric(
+		coredumpDetectedTotal, prometheus.GaugeValue, totalCoredumps)
 
 	controllerId := client.ControllerID()
 	serverVersion := client.ServerVersion()
