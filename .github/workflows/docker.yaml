@@ -25,10 +25,10 @@ jobs:
         run: make build
 
       - name: Create container
-        run: make docker DOCKER_TAG=${{ github.run_number }}
+        run: make docker DOCKER_IMAGE_TAG=${{ github.run_number }}
 
       - name: Tag container
-        run: make docker-tag-latest DOCKER_TAG=${{ github.run_number }}
+        run: make docker-tag-latest DOCKER_IMAGE_TAG=${{ github.run_number }}
 
       - name: Publish container
-        run: make docker-publish DOCKER_TAG=${{ github.run_number }}
+        run: make docker-publish DOCKER_IMAGE_TAG=${{ github.run_number }}
