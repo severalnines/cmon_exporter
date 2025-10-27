@@ -211,7 +211,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		coredumpDetectedTotal, prometheus.GaugeValue, totalCoredumps)
 
-	controllerId := client.ControllerID()
+	controllerId := client.PoolID()
 	serverVersion := client.ServerVersion()
 
 	res, err := client.GetAllClusterInfo(&api.GetAllClusterInfoRequest{
