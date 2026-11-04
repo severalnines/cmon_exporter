@@ -15,6 +15,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,15 +40,35 @@ const fakeAlarms = `{"request_status":"Ok","alarms":[
 type fakeCmon struct {
 	alarmsBody string
 	alarmReqs  []map[string]any
+	authCalls  int
+	// session is the cmon-sid CMON accepts. Each auth issues a new one.
+	session string
+	version string
 }
 
 func (f *fakeCmon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
+	w.Header().Set("Server", "cmon/"+f.version)
+
+	if !strings.HasSuffix(r.URL.Path, "/v2/auth") {
+		if c, err := r.Cookie("cmon-sid"); err != nil || f.session == "" || c.Value != f.session {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"request_status":"AuthRequired","error_string":"Authentication required"}`))
+			return
+		}
+	}
+
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/v2/auth"):
-		http.SetCookie(w, &http.Cookie{Name: "cmon-sid", Value: "sid"})
+		f.authCalls++
+		if req["password"] != "p" {
+			_, _ = w.Write([]byte(`{"request_status":"AccessDenied","error_string":"Username or password is incorrect."}`))
+			return
+		}
+		f.session = fmt.Sprintf("sid-%d", f.authCalls)
+		http.SetCookie(w, &http.Cookie{Name: "cmon-sid", Value: f.session})
 		_, _ = w.Write([]byte(`{"request_status":"Ok","controller_id":"ctrl","user":{"user_name":"u"}}`))
 	case strings.HasSuffix(r.URL.Path, "/v2/clusters"):
 		_, _ = w.Write([]byte(fakeClusters))
@@ -184,6 +205,87 @@ func TestCollectSkipsAlarmMetricsWhenGetAlarmsFails(t *testing.T) {
 			t.Errorf("%s reported although getAlarms failed", name)
 		}
 	}
+}
+
+func TestRefreshKeepsOneSessionAndReadsVersionFromEveryReply(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms, version: "2.4.0.1"}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+	e.refresh()
+
+	if fake.authCalls != 1 {
+		t.Errorf("auth calls after two refreshes = %d, want 1", fake.authCalls)
+	}
+
+	// CMON was upgraded and restarted with the session kept
+	fake.version = "2.4.1.2"
+	e.refresh()
+
+	if got := cmonUpVersion(t, e); got != "2.4.1.2" {
+		t.Errorf("CmonVersion = %q, want 2.4.1.2", got)
+	}
+
+	// the session expired
+	fake.session = "expired"
+	e.refresh()
+
+	if fake.authCalls != 2 {
+		t.Errorf("auth calls after the session expired = %d, want 2", fake.authCalls)
+	}
+	if got := gather(t, e)["cmon_up"]; got != 1 {
+		t.Errorf("cmon_up after re-authentication = %v, want 1", got)
+	}
+}
+
+func TestRefreshReportsDownWithLastLabelsWhenAuthFails(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms, version: "2.4.0.1"}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+
+	fake.session = "expired"
+	e.client.password = "wrong"
+	e.refresh()
+
+	got := gather(t, e)
+	if got["cmon_up"] != 0 {
+		t.Errorf("cmon_up = %v, want 0", got["cmon_up"])
+	}
+	if v := cmonUpVersion(t, e); v != "2.4.0.1" {
+		t.Errorf("CmonVersion = %q, want the last known 2.4.0.1", v)
+	}
+	if _, ok := got["cmon_cluster_total"]; ok {
+		t.Error("cmon_cluster_total reported although CMON failed")
+	}
+}
+
+func cmonUpVersion(t *testing.T, e *Exporter) string {
+	t.Helper()
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(e)
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range families {
+		if mf.GetName() != "cmon_up" {
+			continue
+		}
+		for _, l := range mf.GetMetric()[0].GetLabel() {
+			if l.GetName() == "CmonVersion" {
+				return l.GetValue()
+			}
+		}
+	}
+
+	return ""
 }
 
 func TestScanCoredumpsCountsOnlyCoreFiles(t *testing.T) {

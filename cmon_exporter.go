@@ -25,9 +25,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/severalnines/cmon-proxy/cmon"
-	"github.com/severalnines/cmon-proxy/cmon/api"
-	"github.com/severalnines/cmon-proxy/config"
 )
 
 const namespace = "cmon"
@@ -154,7 +151,9 @@ var (
 const defaultRefreshInterval = 30 * time.Second
 
 type Exporter struct {
-	cmonEndpoint, cmonUsername, cmonPassword string
+	client *cmonClient
+	// controllerId is the last one CMON reported, kept for cmon_up when CMON fails.
+	controllerId string
 
 	mu      sync.RWMutex
 	metrics []prometheus.Metric
@@ -182,9 +181,7 @@ func ScanCoredumps(coredumpDir string) float64 {
 
 func NewExporter(cmonEndpoint string, cmonUsername string, cmonPassword string) *Exporter {
 	return &Exporter{
-		cmonEndpoint: cmonEndpoint,
-		cmonUsername: cmonUsername,
-		cmonPassword: cmonPassword,
+		client: newCmonClient(cmonEndpoint, cmonUsername, cmonPassword, 30*time.Second),
 	}
 }
 
@@ -255,57 +252,33 @@ func (e *Exporter) refresh() {
 
 func (e *Exporter) collectFromCmon(ch chan<- prometheus.Metric) {
 
-	client := cmon.NewClient(&config.CmonInstance{
-		Url:      e.cmonEndpoint,
-		Username: e.cmonUsername,
-		Password: e.cmonPassword},
-		30)
-
-	err := client.Authenticate()
-	if err != nil {
-		res, err := client.Ping()
-		log.Println("Error on cmon auth, also ping result:", err, res)
-		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0, "", "")
-		return
-	}
-	coredumpDir := "/etc/cmon.d"
-	totalCoredumps := ScanCoredumps(coredumpDir)
 	ch <- prometheus.MustNewConstMetric(
-		coredumpDetectedTotal, prometheus.GaugeValue, totalCoredumps)
+		coredumpDetectedTotal, prometheus.GaugeValue, ScanCoredumps("/etc/cmon.d"))
 
-	controllerId := client.PoolID()
-	serverVersion := client.ServerVersion()
-
-	res, err := client.GetAllClusterInfo(&api.GetAllClusterInfoRequest{
-		WithOperation:    &api.WithOperation{Operation: "getAllClusterInfo"},
-		WithSheetInfo:    false,
-		WithDatabases:    false,
-		WithLicenseCheck: false,
-		WithHosts:        false,
-	})
+	clusters, controllerId, err := e.client.getAllClusterInfo()
 	if err != nil {
 		log.Println("Error getting clusters info:", err)
 		ch <- prometheus.MustNewConstMetric(
-			up, prometheus.GaugeValue, 0, serverVersion, controllerId)
+			up, prometheus.GaugeValue, 0, e.client.version, e.controllerId)
 		return
 	}
+	e.controllerId = controllerId
 
 	ch <- prometheus.MustNewConstMetric(
-		up, prometheus.GaugeValue, 1, serverVersion, controllerId)
+		up, prometheus.GaugeValue, 1, e.client.version, controllerId)
 
-	alarmsByCluster := map[uint64][]*api.Alarm{}
-	alarmsRes, alarmsErr := client.GetAlarms(0)
+	alarmsByCluster := map[uint64][]cmonAlarm{}
+	alarms, alarmsErr := e.client.getAlarms()
 	if alarmsErr != nil {
 		log.Println("Error getting alarms:", alarmsErr)
 	} else {
-		for _, alarm := range alarmsRes.Alarms {
-			alarmsByCluster[alarm.ClusterId] = append(alarmsByCluster[alarm.ClusterId], alarm)
+		for _, alarm := range alarms {
+			alarmsByCluster[alarm.ClusterID] = append(alarmsByCluster[alarm.ClusterID], alarm)
 		}
 	}
 
 	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms, totalClusterFailedInitAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-	for _, cluster := range res.Clusters {
+	for _, cluster := range clusters {
 		//		log.Println(cluster.Hosts[0])
 		clusterIdStr := strconv.FormatUint(cluster.ClusterID, 10)
 		if cluster.State == "STARTED" {
