@@ -13,13 +13,13 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,7 +167,7 @@ func ScanCoredumps(coredumpDir string) float64 {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && filepath.Base(path)[:5] == "core." {
+		if !info.IsDir() && strings.HasPrefix(filepath.Base(path), "core.") {
 			totalCoredumps++
 		}
 		return nil
@@ -213,26 +213,19 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 // Collect serves the metrics of the last refresh and never calls CMON.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	e.mu.RLock()
-	defer e.mu.RUnlock()
+	metrics := e.metrics
+	e.mu.RUnlock()
 
-	for _, m := range e.metrics {
+	for _, m := range metrics {
 		ch <- m
 	}
 }
 
-// Run refreshes the metrics from CMON now and then every interval until ctx ends.
-func (e *Exporter) Run(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
+// Run refreshes the metrics from CMON forever, waiting interval after each refresh.
+func (e *Exporter) Run(interval time.Duration) {
 	for {
+		time.Sleep(interval)
 		e.refresh()
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
 	}
 }
 
@@ -389,6 +382,11 @@ func (e *Exporter) collectFromCmon(ch chan<- prometheus.Metric) {
 		clusterUnknownTotal, prometheus.CounterValue, totalUnknown, controllerId)
 	ch <- prometheus.MustNewConstMetric(
 		totalClustersCount, prometheus.CounterValue, totalCount, controllerId)
+
+	if alarmsErr != nil {
+		return
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		criticalAlarmsTotal, prometheus.CounterValue, totalCriticalAlarms, controllerId)
 	ch <- prometheus.MustNewConstMetric(
@@ -429,7 +427,8 @@ func main() {
 	prometheus.MustRegister(exporter)
 	log.Printf("Using connection endpoint: %s, refresh interval: %s", cmonEndpoint, refreshInterval)
 
-	go exporter.Run(context.Background(), refreshInterval)
+	exporter.refresh()
+	go exporter.Run(refreshInterval)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

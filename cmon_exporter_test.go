@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -171,9 +173,31 @@ func TestCollectSkipsAlarmMetricsWhenGetAlarmsFails(t *testing.T) {
 	if got["cmon_up"] != 1 || got["cmon_cluster_total"] != 2 {
 		t.Errorf("cluster metrics missing: up=%v total=%v", got["cmon_up"], got["cmon_cluster_total"])
 	}
-	for _, name := range []string{"cmon_cluster_backup_failed{one}", "cmon_cluster_failed_init{two}"} {
+	for _, name := range []string{
+		"cmon_cluster_backup_failed{one}",
+		"cmon_cluster_failed_init{two}",
+		"cmon_alarms_critical_total",
+		"cmon_alarms_backup_failed_total",
+		"cmon_cluster_failed_init_total",
+	} {
 		if _, ok := got[name]; ok {
 			t.Errorf("%s reported although getAlarms failed", name)
 		}
+	}
+}
+
+func TestScanCoredumpsCountsOnlyCoreFiles(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"core.123", "core.cmon.456", "ab", "notcore.1", "core"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "core.dir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ScanCoredumps(dir); got != 2 {
+		t.Errorf("ScanCoredumps = %v, want 2", got)
 	}
 }
