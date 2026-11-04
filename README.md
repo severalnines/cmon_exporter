@@ -17,6 +17,9 @@ s9s user --create --group=admins --generate-key --controller=https://127.0.0.1:9
 CMON_USERNAME=cmon_exporter CMON_PASSWORD=SECRET CMON_ENDPOINT=https://127.0.0.1:9501 ./cmon_exporter
 ```
 
+The exporter collects from CMON in the background every `CMON_REFRESH_INTERVAL` (default `30s`) and serves the last result on `/metrics`.
+`cmon_exporter_refresh_duration_seconds` and `cmon_exporter_last_refresh_timestamp_seconds` show how long the last collection took and when it finished.
+
 ## Systemd
 
 - Build or download a released version: https://github.com/severalnines/cmon_exporter/releases

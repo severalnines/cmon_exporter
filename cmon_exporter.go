@@ -13,12 +13,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -136,10 +139,25 @@ var (
 		"Total number of coredumps detected",
 		nil, nil,
 	)
+	refreshDuration = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "refresh_duration_seconds"),
+		"How long the last collection from CMON took.",
+		nil, nil,
+	)
+	lastRefresh = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "last_refresh_timestamp_seconds"),
+		"Unix time when the last collection from CMON finished.",
+		nil, nil,
+	)
 )
+
+const defaultRefreshInterval = 30 * time.Second
 
 type Exporter struct {
 	cmonEndpoint, cmonUsername, cmonPassword string
+
+	mu      sync.RWMutex
+	metrics []prometheus.Metric
 }
 
 func ScanCoredumps(coredumpDir string) float64 {
@@ -188,9 +206,61 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- clusterBackupFailed
 	ch <- clusterBackupUploadFailed
 	ch <- coredumpDetectedTotal
+	ch <- refreshDuration
+	ch <- lastRefresh
 }
 
+// Collect serves the metrics of the last refresh and never calls CMON.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	for _, m := range e.metrics {
+		ch <- m
+	}
+}
+
+// Run refreshes the metrics from CMON now and then every interval until ctx ends.
+func (e *Exporter) Run(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		e.refresh()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (e *Exporter) refresh() {
+	start := time.Now()
+
+	ch := make(chan prometheus.Metric)
+	go func() {
+		e.collectFromCmon(ch)
+		close(ch)
+	}()
+
+	var metrics []prometheus.Metric
+	for m := range ch {
+		metrics = append(metrics, m)
+	}
+
+	end := time.Now()
+	metrics = append(metrics,
+		prometheus.MustNewConstMetric(refreshDuration, prometheus.GaugeValue, end.Sub(start).Seconds()),
+		prometheus.MustNewConstMetric(lastRefresh, prometheus.GaugeValue, float64(end.Unix())))
+
+	e.mu.Lock()
+	e.metrics = metrics
+	e.mu.Unlock()
+}
+
+func (e *Exporter) collectFromCmon(ch chan<- prometheus.Metric) {
 
 	client := cmon.NewClient(&config.CmonInstance{
 		Url:      e.cmonEndpoint,
@@ -231,6 +301,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		up, prometheus.GaugeValue, 1, serverVersion, controllerId)
 
+	alarmsByCluster := map[uint64][]*api.Alarm{}
+	alarmsRes, alarmsErr := client.GetAlarms(0)
+	if alarmsErr != nil {
+		log.Println("Error getting alarms:", alarmsErr)
+	} else {
+		for _, alarm := range alarmsRes.Alarms {
+			alarmsByCluster[alarm.ClusterId] = append(alarmsByCluster[alarm.ClusterId], alarm)
+		}
+	}
+
 	totalCriticalAlarms, totalCount, totalStarted, totalDegraded, totalStopped, totalUnknown, totalFailed, totalBackupFailedAlarms, totalClusterFailedInitAlarms := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, cluster := range res.Clusters {
 		//		log.Println(cluster.Hosts[0])
@@ -265,13 +345,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 
 		totalCount++
-		res3, err := client.GetAlarms(cluster.ClusterID)
-		if err != nil {
-			log.Println("getting alarms for", cluster.ClusterID, err)
-		} else {
+		if alarmsErr == nil {
 			failedUploadBackupAlarms, failedBackupAlarms, clusterFailedInitAlarms := 0.0, 0.0, 0.0
 
-			for _, alarm := range res3.Alarms {
+			for _, alarm := range alarmsByCluster[cluster.ClusterID] {
 				if alarm.SeverityName == "ALARM_WARNING" {
 					continue
 				}
@@ -338,9 +415,20 @@ func main() {
 		log.Fatalf("Env variable CMON_PASSWORD is not set.")
 	}
 
+	refreshInterval := defaultRefreshInterval
+	if s := os.Getenv("CMON_REFRESH_INTERVAL"); s != "" {
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			log.Fatalf("Env variable CMON_REFRESH_INTERVAL=%q is not a positive duration.", s)
+		}
+		refreshInterval = d
+	}
+
 	exporter := NewExporter(cmonEndpoint, cmonUsername, cmonPassword)
 	prometheus.MustRegister(exporter)
-	log.Printf("Using connection endpoint: %s", cmonEndpoint)
+	log.Printf("Using connection endpoint: %s, refresh interval: %s", cmonEndpoint, refreshInterval)
+
+	go exporter.Run(context.Background(), refreshInterval)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
