@@ -18,7 +18,7 @@ CMON_USERNAME=cmon_exporter CMON_PASSWORD=SECRET CMON_ENDPOINT=https://127.0.0.1
 ```
 
 The exporter collects from CMON at startup, then again `CMON_REFRESH_INTERVAL` (default `30s`) after each collection ends, and serves the last result on `/metrics`.
-`cmon_exporter_refresh_duration_seconds` and `cmon_exporter_last_refresh_timestamp_seconds` show how long the last collection took and when it finished.
+`cmon_exporter_refresh_duration_seconds` and `cmon_exporter_last_refresh_timestamp_seconds` show how long the last collection took and when the last successful one finished.
 
 ## Systemd
 

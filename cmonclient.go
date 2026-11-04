@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"strings"
 	"time"
 )
@@ -28,12 +27,14 @@ import (
 const requestStatusOk = "Ok"
 
 // cmonClient is a minimal CMON RPCv2 client. It keeps one session and logs in
-// again only when CMON asks for it.
+// again only when CMON rejects it.
 type cmonClient struct {
 	endpoint, username, password string
 
 	http *http.Client
-	// version is the CMON version from the Server header of the last reply.
+	// session is the cmon-sid cookie of the current session, empty before the first login.
+	session string
+	// version is the CMON version from the Server header of the last CMON reply.
 	version string
 }
 
@@ -66,15 +67,12 @@ type cmonAlarmsReply struct {
 }
 
 func newCmonClient(endpoint, username, password string, timeout time.Duration) *cmonClient {
-	jar, _ := cookiejar.New(nil) // never fails with nil options
-
 	return &cmonClient{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		username: username,
 		password: password,
 		http: &http.Client{
 			Timeout: timeout,
-			Jar:     jar,
 			Transport: &http.Transport{
 				// CMON listens on 127.0.0.1 with a self-signed certificate
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
@@ -106,17 +104,21 @@ func (c *cmonClient) getAlarms() ([]cmonAlarm, error) {
 func (c *cmonClient) authenticate() error {
 	var reply cmonReply
 
-	return c.post("auth", map[string]any{
+	_, err := c.post("auth", map[string]any{
 		"operation": "authenticateWithPassword",
 		"user_name": c.username,
 		"password":  c.password,
 	}, &reply)
+
+	return err
 }
 
-// call posts the request, logging in and retrying once when CMON has no session for us.
+// call posts the request, logging in and retrying once when CMON rejects our session.
 func (c *cmonClient) call(module string, req any, reply interface{ status() *cmonReply }) error {
-	err := c.post(module, req, reply)
-	if reply.status().RequestStatus != "AuthRequired" {
+	code, err := c.post(module, req, reply)
+	rejected := code == http.StatusUnauthorized || code == http.StatusForbidden ||
+		reply.status().RequestStatus == "AuthRequired"
+	if !rejected {
 		return err
 	}
 
@@ -124,40 +126,59 @@ func (c *cmonClient) call(module string, req any, reply interface{ status() *cmo
 		return fmt.Errorf("authenticate: %w", err)
 	}
 
-	return c.post(module, req, reply)
+	_, err = c.post(module, req, reply)
+
+	return err
 }
 
-func (c *cmonClient) post(module string, req any, reply interface{ status() *cmonReply }) error {
+// post sends one request and returns the HTTP status code (0 when there was no reply).
+func (c *cmonClient) post(module string, req any, reply interface{ status() *cmonReply }) (int, error) {
+	*reply.status() = cmonReply{}
+
 	body, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	resp, err := c.http.Post(c.endpoint+"/v2/"+module, "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, c.endpoint+"/v2/"+module, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return 0, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if c.session != "" {
+		httpReq.AddCookie(&http.Cookie{Name: "cmon-sid", Value: c.session})
+	}
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if server := strings.SplitN(resp.Header.Get("Server"), "/", 2); len(server) == 2 {
-		c.version = strings.TrimSpace(server[1])
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "cmon-sid" {
+			c.session = cookie.Value
+		}
+	}
+
+	if version, ok := strings.CutPrefix(resp.Header.Get("Server"), "cmon/"); ok {
+		c.version = strings.TrimSpace(version)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return resp.StatusCode, err
 	}
 
-	*reply.status() = cmonReply{}
 	if err := json.Unmarshal(data, reply); err != nil {
-		return fmt.Errorf("%s: HTTP %d: %w", module, resp.StatusCode, err)
+		return resp.StatusCode, fmt.Errorf("%s: HTTP %d: %w", module, resp.StatusCode, err)
 	}
 
 	if st := reply.status(); st.RequestStatus != requestStatusOk {
-		return fmt.Errorf("%s: %s: %s", module, st.RequestStatus, st.ErrorString)
+		return resp.StatusCode, fmt.Errorf("%s: %s: %s", module, st.RequestStatus, st.ErrorString)
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }
 
 func (r *cmonReply) status() *cmonReply { return r }

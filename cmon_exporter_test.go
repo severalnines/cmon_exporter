@@ -44,17 +44,33 @@ type fakeCmon struct {
 	// session is the cmon-sid CMON accepts. Each auth issues a new one.
 	session string
 	version string
+	// clustersBody replaces fakeClusters when set.
+	clustersBody string
+	// proxyError answers every request like a proxy in front of a dead CMON.
+	proxyError bool
+	// plainForbidden rejects a bad session with a bare 403 and no JSON body.
+	plainForbidden bool
 }
 
 func (f *fakeCmon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
+	if f.proxyError {
+		w.Header().Set("Server", "nginx/1.25.3")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("<html>502 Bad Gateway</html>"))
+		return
+	}
+
 	w.Header().Set("Server", "cmon/"+f.version)
 
 	if !strings.HasSuffix(r.URL.Path, "/v2/auth") {
 		if c, err := r.Cookie("cmon-sid"); err != nil || f.session == "" || c.Value != f.session {
 			w.WriteHeader(http.StatusForbidden)
+			if f.plainForbidden {
+				return
+			}
 			_, _ = w.Write([]byte(`{"request_status":"AuthRequired","error_string":"Authentication required"}`))
 			return
 		}
@@ -71,7 +87,11 @@ func (f *fakeCmon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "cmon-sid", Value: f.session})
 		_, _ = w.Write([]byte(`{"request_status":"Ok","controller_id":"ctrl","user":{"user_name":"u"}}`))
 	case strings.HasSuffix(r.URL.Path, "/v2/clusters"):
-		_, _ = w.Write([]byte(fakeClusters))
+		body := fakeClusters
+		if f.clustersBody != "" {
+			body = f.clustersBody
+		}
+		_, _ = w.Write([]byte(body))
 	case strings.HasSuffix(r.URL.Path, "/v2/alarm"):
 		f.alarmReqs = append(f.alarmReqs, req)
 		_, _ = w.Write([]byte(f.alarmsBody))
@@ -286,6 +306,90 @@ func cmonUpVersion(t *testing.T, e *Exporter) string {
 	}
 
 	return ""
+}
+
+func TestRefreshReportsLastAlarmsWhenGetAlarmsFails(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+
+	fake.alarmsBody = `{"request_status":"UnknownError","error_string":"boom"}`
+	e.refresh()
+
+	got := gather(t, e)
+	for name, value := range map[string]float64{
+		"cmon_alarms_critical_total":      3,
+		"cmon_alarms_backup_failed_total": 1,
+		"cmon_cluster_backup_failed{one}": 1,
+		"cmon_cluster_failed_init{two}":   1,
+	} {
+		v, ok := got[name]
+		if !ok {
+			t.Errorf("%s missing after a failed getAlarms", name)
+		} else if v != value {
+			t.Errorf("%s = %v, want the last known %v", name, v, value)
+		}
+	}
+}
+
+func TestRefreshLogsInAgainOnBareForbidden(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms, plainForbidden: true}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+
+	if fake.authCalls != 1 {
+		t.Errorf("auth calls = %d, want 1", fake.authCalls)
+	}
+	if got := gather(t, e)["cmon_up"]; got != 1 {
+		t.Errorf("cmon_up = %v, want 1", got)
+	}
+}
+
+func TestRefreshIgnoresServerHeaderOfNonCmonReplies(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms, version: "2.4.0.1"}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+	first := gather(t, e)["cmon_exporter_last_refresh_timestamp_seconds"]
+
+	fake.proxyError = true
+	e.refresh()
+
+	got := gather(t, e)
+	if got["cmon_up"] != 0 {
+		t.Errorf("cmon_up = %v, want 0", got["cmon_up"])
+	}
+	if v := cmonUpVersion(t, e); v != "2.4.0.1" {
+		t.Errorf("CmonVersion = %q, want the last CMON one 2.4.0.1", v)
+	}
+	if got["cmon_exporter_last_refresh_timestamp_seconds"] != first {
+		t.Errorf("last refresh timestamp moved on a failed refresh: %v -> %v",
+			first, got["cmon_exporter_last_refresh_timestamp_seconds"])
+	}
+}
+
+func TestRefreshKeepsControllerIdWhenReplyHasNone(t *testing.T) {
+	fake := &fakeCmon{alarmsBody: fakeAlarms}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+
+	e := NewExporter(srv.URL, "u", "p")
+	e.refresh()
+
+	fake.clustersBody = strings.Replace(fakeClusters, `"controller_id":"ctrl",`, "", 1)
+	e.refresh()
+
+	if e.controllerId != "ctrl" {
+		t.Errorf("controllerId = %q, want ctrl", e.controllerId)
+	}
 }
 
 func TestScanCoredumpsCountsOnlyCoreFiles(t *testing.T) {
