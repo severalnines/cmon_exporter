@@ -398,6 +398,7 @@ func (e *Exporter) collectFromCmon(ch chan<- prometheus.Metric) {
 }
 
 func main() {
+	flag.Parse()
 
 	cmonEndpoint := os.Getenv("CMON_ENDPOINT")
 	cmonUsername := os.Getenv("CMON_USERNAME")
