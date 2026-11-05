@@ -143,7 +143,7 @@ var (
 	)
 	lastRefresh = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "last_refresh_timestamp_seconds"),
-		"Unix time when the last successful collection from CMON finished.",
+		"Unix time when the last collection that got both clusters and alarms from CMON finished.",
 		nil, nil,
 	)
 )
@@ -157,7 +157,9 @@ type Exporter struct {
 	// alarms is the last successful getAlarms result, reused when the call fails.
 	alarms     []cmonAlarm
 	haveAlarms bool
-	// lastSuccess is when CMON last answered getAllClusterInfo.
+	// alarmClusters are the clusters that existed when CMON returned alarms.
+	alarmClusters map[uint64]bool
+	// lastSuccess is when CMON last answered both getAllClusterInfo and getAlarms.
 	lastSuccess time.Time
 
 	mu      sync.RWMutex
@@ -252,7 +254,7 @@ func (e *Exporter) refresh() {
 	e.mu.Unlock()
 }
 
-// collectFromCmon returns the metrics and whether CMON answered getAllClusterInfo.
+// collectFromCmon returns the metrics and whether CMON answered both getAllClusterInfo and getAlarms.
 func (e *Exporter) collectFromCmon() ([]prometheus.Metric, bool) {
 	var metrics []prometheus.Metric
 	add := func(desc *prometheus.Desc, valueType prometheus.ValueType, value float64, labels ...string) {
@@ -275,8 +277,13 @@ func (e *Exporter) collectFromCmon() ([]prometheus.Metric, bool) {
 	add(up, prometheus.GaugeValue, 1, e.client.version, controllerId)
 
 	alarms, err := e.client.getAlarms()
-	if err == nil {
+	alarmsOk := err == nil
+	if alarmsOk {
 		e.alarms, e.haveAlarms = alarms, true
+		e.alarmClusters = map[uint64]bool{}
+		for _, cluster := range clusters {
+			e.alarmClusters[cluster.ClusterID] = true
+		}
 	} else if e.haveAlarms {
 		log.Println("Error getting alarms, reporting the last ones:", err)
 	} else {
@@ -316,7 +323,7 @@ func (e *Exporter) collectFromCmon() ([]prometheus.Metric, bool) {
 		}
 
 		totalCount++
-		if e.haveAlarms {
+		if e.alarmClusters[cluster.ClusterID] {
 			failedUploadBackupAlarms, failedBackupAlarms, clusterFailedInitAlarms := 0.0, 0.0, 0.0
 
 			for _, alarm := range alarmsByCluster[cluster.ClusterID] {
@@ -358,7 +365,7 @@ func (e *Exporter) collectFromCmon() ([]prometheus.Metric, bool) {
 		add(clusterFailedInitTotal, prometheus.CounterValue, totalClusterFailedInitAlarms, controllerId)
 	}
 
-	return metrics, true
+	return metrics, alarmsOk
 }
 
 func main() {

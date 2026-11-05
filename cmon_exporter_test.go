@@ -225,6 +225,9 @@ func TestCollectSkipsAlarmMetricsWhenGetAlarmsFails(t *testing.T) {
 			t.Errorf("%s reported although getAlarms failed", name)
 		}
 	}
+	if v, ok := got["cmon_exporter_last_refresh_timestamp_seconds"]; ok {
+		t.Errorf("cmon_exporter_last_refresh_timestamp_seconds = %v, want none before alarms were collected", v)
+	}
 }
 
 func TestRefreshKeepsOneSessionAndReadsVersionFromEveryReply(t *testing.T) {
@@ -316,11 +319,16 @@ func TestRefreshReportsLastAlarmsWhenGetAlarmsFails(t *testing.T) {
 	e := NewExporter(srv.URL, "u", "p")
 	e.refresh()
 
+	lastSuccess := e.lastSuccess
+
 	fake.alarmsBody = `{"request_status":"UnknownError","error_string":"boom"}`
+	fake.clustersBody = strings.Replace(fakeClusters, `"state":"FAILURE"}`,
+		`"state":"FAILURE"},{"cluster_id":3,"cluster_name":"three","state":"STARTED"}`, 1)
 	e.refresh()
 
 	got := gather(t, e)
 	for name, value := range map[string]float64{
+		"cmon_cluster_total":              3,
 		"cmon_alarms_critical_total":      3,
 		"cmon_alarms_backup_failed_total": 1,
 		"cmon_cluster_backup_failed{one}": 1,
@@ -332,6 +340,12 @@ func TestRefreshReportsLastAlarmsWhenGetAlarmsFails(t *testing.T) {
 		} else if v != value {
 			t.Errorf("%s = %v, want the last known %v", name, v, value)
 		}
+	}
+	if v, ok := got["cmon_cluster_backup_failed{three}"]; ok {
+		t.Errorf("cmon_cluster_backup_failed{three} = %v, want none: its alarms were never fetched", v)
+	}
+	if !e.lastSuccess.Equal(lastSuccess) {
+		t.Errorf("last success moved from %v to %v although getAlarms failed", lastSuccess, e.lastSuccess)
 	}
 }
 
