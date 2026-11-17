@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -419,5 +420,21 @@ func TestScanCoredumpsCountsOnlyCoreFiles(t *testing.T) {
 
 	if got := ScanCoredumps(dir); got != 2 {
 		t.Errorf("ScanCoredumps = %v, want 2", got)
+	}
+}
+
+func TestCmonClientClosesIdleConnections(t *testing.T) {
+	transport, ok := newCmonClient("https://127.0.0.1:9501", "u", "p", time.Second).http.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("transport is not *http.Transport")
+	}
+	if transport.IdleConnTimeout <= 0 {
+		t.Errorf("IdleConnTimeout = %v, want > 0 so a connection CMON dropped is not reused forever", transport.IdleConnTimeout)
+	}
+	if transport.TLSHandshakeTimeout <= 0 {
+		t.Errorf("TLSHandshakeTimeout = %v, want > 0", transport.TLSHandshakeTimeout)
+	}
+	if transport.TLSClientConfig == nil || !transport.TLSClientConfig.InsecureSkipVerify {
+		t.Error("TLS verification is on, want off for the self-signed CMON certificate")
 	}
 }

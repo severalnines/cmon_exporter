@@ -67,16 +67,17 @@ type cmonAlarmsReply struct {
 }
 
 func newCmonClient(endpoint, username, password string, timeout time.Duration) *cmonClient {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// CMON listens on 127.0.0.1 with a self-signed certificate
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+
 	return &cmonClient{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		username: username,
 		password: password,
 		http: &http.Client{
-			Timeout: timeout,
-			Transport: &http.Transport{
-				// CMON listens on 127.0.0.1 with a self-signed certificate
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-			},
+			Timeout:   timeout,
+			Transport: transport,
 		},
 	}
 }
